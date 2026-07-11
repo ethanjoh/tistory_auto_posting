@@ -4,7 +4,7 @@
 ### STEP 1. 세션 로그인 (최초 1회 또는 세션 만료 시)
 
 ```powershell
-cd c:\Users\ethan\Downloads\tistory_backup
+cd [작업폴더 경로]
 .venv\Scripts\python login.py
 ```
 
