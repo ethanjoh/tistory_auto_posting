@@ -1,7 +1,20 @@
 
 ## 📖 처음부터 하루 10개 자동 발행 방법
 
-### STEP 1. 세션 로그인 (최초 1회 또는 세션 만료 시)
+### STEP 1. 설정 변경 (config.json)
+
+- blog_name, backup_dir 필수입력
+
+| 설정 | 의미 | 현재값 |
+|------|------|--------|
+| `blog_name` | 포스팅할 블로그 주소 | |
+| `backup_dir` | 백업한 티스토리 HTML 폴더 경로 | |
+| `daily_limit` | 하루 최대 발행 개수 | `10` (최대 15)|
+| `min_delay_seconds` | 글 간 최소 대기 시간 | `300` (5분) |
+| `max_delay_seconds` | 글 간 최대 대기 시간 | `900` (15분) |
+| `visibility` | 공개 설정 | `"private"` (비공개) |
+
+### STEP 2. 세션 로그인 (최초 1회 또는 세션 만료 시)
 
 ```powershell
 cd [작업폴더 경로]
@@ -13,7 +26,7 @@ cd [작업폴더 경로]
 
 ---
 
-### STEP 2. 자동 발행 실행
+### STEP 3. 자동 발행 실행
 
 ```powershell
 .venv\Scripts\python publish.py
@@ -28,7 +41,7 @@ cd [작업폴더 경로]
 
 ---
 
-### STEP 3. 다음날 다시 실행
+### STEP 4. 다음날 다시 실행
 
 ```powershell
 .venv\Scripts\python publish.py
@@ -37,14 +50,3 @@ cd [작업폴더 경로]
 - DB에 오늘 날짜 기준으로 카운트가 리셋되므로, 다음날 다시 실행하면 자동으로 남은 폴더부터 10개씩 계속 발행합니다.
 
 ---
-
-### 💡 설정 변경 (config.json)
-
-| 설정 | 의미 | 현재값 |
-|------|------|--------|
-| `blog_name` | 포스팅할 블로그 주소 | |
-| `backup_dir` | 백업한 티스토리 HTML 폴더 경로 | |
-| `daily_limit` | 하루 최대 발행 개수 | `10` (최대 15)|
-| `min_delay_seconds` | 글 간 최소 대기 시간 | `300` (5분) |
-| `max_delay_seconds` | 글 간 최대 대기 시간 | `900` (15분) |
-| `visibility` | 공개 설정 | `"private"` (비공개) |
