@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# 가상환경
+.venv/
+venv/
+env/
+
+# 티스토리 백업 HTML 폴더 (숫자로 된 폴더들)
+[0-9]*/
+
+# 브라우저 세션 데이터
+user_data/
+
+# 로컬 DB / 로그
+database.db
+*.log
+error.log
+
+# 민감한 설정 파일 (필요시 주석 해제)
+# config.json
+
+# OS 파일
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/

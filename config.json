@@ -1,0 +1,20 @@
+{
+  "blog_name": "wdev",
+  "user_data_dir": "./user_data",
+  "backup_dir": "c:/Users/ethan/Downloads/tistory_backup",
+  "headless": false,
+  "daily_limit": 10,
+  "min_delay_seconds": 300,
+  "max_delay_seconds": 900,
+  "selectors": {
+    "title_textarea": "#post-title-inp",
+    "editor_mode_dropdown": "button:has-text('기본모드'), span:has-text('기본모드')",
+    "editor_mode_html": "button:has-text('HTML'), li:has-text('HTML'), a:has-text('HTML')",
+    "html_textarea": ".textarea_html, textarea.textarea_html",
+    "file_input": "input[type='file']",
+    "publish_button": "#publish-layer-btn, button:has-text('완료')",
+    "confirm_publish_button": "button:has-text('발행'), .btn_confirm",
+    "category_select": ".select_category, select[name='category']",
+    "tag_input": ".tag_input, input#tag-input"
+  }
+}
