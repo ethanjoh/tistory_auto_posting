@@ -90,11 +90,9 @@ def find_html_file(folder_path, folder_name):
     return None
 
 
-def publish_one(config, selected_folder, folder_path, html_file):
+def publish_one(page, config, selected_folder, folder_path, html_file):
     """하나의 백업 폴더를 발행합니다. 성공 시 True, 실패 시 False 반환."""
-    user_data_dir = os.path.abspath(config.get("user_data_dir", "user_data"))
     blog_name = config.get("blog_name", "your-blog-name")
-    headless = config.get("headless", False)
     write_url = f"https://{blog_name}.tistory.com/manage/post"
     
     delays = config.get("delays", {})
@@ -120,265 +118,256 @@ def publish_one(config, selected_folder, folder_path, html_file):
     print(f"  태그: {tags}")
     print(f"  이미지 개수: {len(images)}")
     
-    with sync_playwright() as p:
-        context = p.chromium.launch_persistent_context(
-            user_data_dir=user_data_dir,
-            headless=headless,
-            viewport={"width": 1400, "height": 900},
-            args=["--disable-blink-features=AutomationControlled"]
-        )
+    print(f"  티스토리 에디터 이동 중: {write_url}")
+    page.goto(write_url)
+    page.wait_for_timeout(5000)
+    
+    ensure_login(page)
+    page.wait_for_timeout(3000)
+    
+    if "login" in page.url or "auth" in page.url:
+        print("[ERROR] 로그인 세션이 유효하지 않습니다. login.py를 먼저 실행해 주세요.")
+        return False
         
-        page = context.new_page()
-        print(f"  티스토리 에디터 이동 중: {write_url}")
-        page.goto(write_url)
-        page.wait_for_timeout(5000)
+    success = False
+    try:
+        # 5. 제목 입력
+        print("제목 입력 중...")
+        title_input = None
+        title_selectors = [
+            config.get("selectors", {}).get("title_textarea", "#post-title-inp"),
+            "textarea.tf_title", 
+            "input.tf_title", 
+            "input[placeholder='제목을 입력하세요']", 
+            "#tx_article_title"
+        ]
+        for sel in title_selectors:
+            loc = page.locator(sel)
+            if loc.count() > 0:
+                title_input = loc.first
+                break
         
-        ensure_login(page)
-        page.wait_for_timeout(3000)
-        
-        if "login" in page.url or "auth" in page.url:
-            print("[ERROR] 로그인 세션이 유효하지 않습니다. login.py를 먼저 실행해 주세요.")
-            context.close()
-            return False
+        if title_input:
+            human_type(title_input, title, delays.get("typing_min_ms", 50), delays.get("typing_max_ms", 150))
+            title_input.blur()
+        else:
+            raise Exception("제목 입력 필드를 찾을 수 없습니다.")
             
-        success = False
-        try:
-            # 5. 제목 입력
-            print("제목 입력 중...")
-            title_input = None
-            title_selectors = [
-                config.get("selectors", {}).get("title_textarea", "#post-title-inp"),
-                "textarea.tf_title", 
-                "input.tf_title", 
-                "input[placeholder='제목을 입력하세요']", 
-                "#tx_article_title"
-            ]
-            for sel in title_selectors:
-                loc = page.locator(sel)
-                if loc.count() > 0:
-                    title_input = loc.first
-                    break
-            
-            if title_input:
-                human_type(title_input, title, delays.get("typing_min_ms", 50), delays.get("typing_max_ms", 150))
-                title_input.blur()
-            else:
-                raise Exception("제목 입력 필드를 찾을 수 없습니다.")
+        random_sleep(action_min, action_max)
+        
+        # 6. 이미지 업로드 (네트워크 인터셉트 설정)
+        tistory_image_map = {}
+        
+        def handle_response(res):
+            if "attach.json" in res.url and res.status == 200:
+                try:
+                    data = res.json()
+                    orig_name = data.get("name")
+                    cdn_url = data.get("url")
+                    if orig_name and cdn_url:
+                        tistory_image_map[orig_name] = cdn_url
+                        print(f"  [네트워크 감지] 이미지 매핑 성공: {orig_name} -> {cdn_url[:60]}...")
+                except Exception as e:
+                    print(f"  [네트워크 감지 에러] {e}")
+                    
+        page.on("response", handle_response)
+        
+        if images:
+            print(f"로컬 이미지 에디터에 업로드 진행 중 (총 {len(images)}개)...")
+            for idx, img in enumerate(images):
+                abs_path = img["absolute_path"]
+                print(f"  [{idx+1}/{len(images)}] 이미지 업로드: {abs_path}")
                 
+                try:
+                    page.evaluate("window.tinymce.activeEditor.focus()")
+                    page.wait_for_timeout(500)
+                    page.evaluate("document.querySelector('.mce-i-image').closest('button').click()")
+                    page.wait_for_timeout(500)
+                    
+                    with page.expect_file_chooser() as fc_info:
+                        page.evaluate("document.getElementById('attach-image').click()")
+                    file_chooser = fc_info.value
+                    file_chooser.set_files(abs_path)
+                    page.wait_for_timeout(4000)
+                except Exception as e:
+                    print(f"  [{idx+1}/{len(images)}] 이미지 업로드 에러: {e}")
+            
             random_sleep(action_min, action_max)
             
-            # 6. 이미지 업로드 (네트워크 인터셉트 설정)
-            tistory_image_map = {}
+        # 7. 카테고리 선택 (완료 버튼 클릭 전에 수행)
+        if category:
+            cat_target = category.split("/")[-1].strip()
+            print(f"카테고리 설정 시도: {cat_target}")
             
-            def handle_response(res):
-                if "attach.json" in res.url and res.status == 200:
-                    try:
-                        data = res.json()
-                        orig_name = data.get("name")
-                        cdn_url = data.get("url")
-                        if orig_name and cdn_url:
-                            tistory_image_map[orig_name] = cdn_url
-                            print(f"  [네트워크 감지] 이미지 매핑 성공: {orig_name} -> {cdn_url[:60]}...")
-                    except Exception as e:
-                        print(f"  [네트워크 감지 에러] {e}")
-                        
-            page.on("response", handle_response)
-            
-            if images:
-                print(f"로컬 이미지 에디터에 업로드 진행 중 (총 {len(images)}개)...")
-                for idx, img in enumerate(images):
-                    abs_path = img["absolute_path"]
-                    print(f"  [{idx+1}/{len(images)}] 이미지 업로드: {abs_path}")
-                    
-                    try:
-                        page.evaluate("window.tinymce.activeEditor.focus()")
-                        page.wait_for_timeout(500)
-                        page.evaluate("document.querySelector('.mce-i-image').closest('button').click()")
-                        page.wait_for_timeout(500)
-                        
-                        with page.expect_file_chooser() as fc_info:
-                            page.evaluate("document.getElementById('attach-image').click()")
-                        file_chooser = fc_info.value
-                        file_chooser.set_files(abs_path)
-                        page.wait_for_timeout(4000)
-                    except Exception as e:
-                        print(f"  [{idx+1}/{len(images)}] 이미지 업로드 에러: {e}")
+            category_btn = page.locator("#category-btn").first
+            if category_btn.count() > 0:
+                category_btn.click(force=True)
+                page.wait_for_timeout(1000)
                 
-                random_sleep(action_min, action_max)
-                
-            # 7. 카테고리 선택 (완료 버튼 클릭 전에 수행)
-            if category:
-                cat_target = category.split("/")[-1].strip()
-                print(f"카테고리 설정 시도: {cat_target}")
-                
-                category_btn = page.locator("#category-btn").first
-                if category_btn.count() > 0:
-                    category_btn.click(force=True)
-                    page.wait_for_timeout(1000)
-                    
-                    cat_option = page.locator(f"div.mce-menu-item:has-text('{cat_target}'), li:has-text('{cat_target}'), .category-item:has-text('{cat_target}')").first
-                    if cat_option.count() > 0:
-                        cat_option.click(force=True)
-                        print(f"카테고리 '{cat_target}' 선택 성공.")
+                cat_option = page.locator(f"div.mce-menu-item:has-text('{cat_target}'), li:has-text('{cat_target}'), .category-item:has-text('{cat_target}')").first
+                if cat_option.count() > 0:
+                    cat_option.click(force=True)
+                    print(f"카테고리 '{cat_target}' 선택 성공.")
+                else:
+                    all_cats = page.locator("div.mce-menu-item, li.category-item").all()
+                    cat_texts = [c.inner_text().strip() for c in all_cats[:20]]
+                    print(f"[WARNING] 카테고리 '{cat_target}' 옵션을 찾을 수 없습니다. 사용 가능한 목록: {cat_texts}")
+                    no_cat = page.locator("#category-item-0").first
+                    if no_cat.count() > 0:
+                        no_cat.click(force=True)
                     else:
-                        all_cats = page.locator("div.mce-menu-item, li.category-item").all()
-                        cat_texts = [c.inner_text().strip() for c in all_cats[:20]]
-                        print(f"[WARNING] 카테고리 '{cat_target}' 옵션을 찾을 수 없습니다. 사용 가능한 목록: {cat_texts}")
-                        no_cat = page.locator("#category-item-0").first
-                        if no_cat.count() > 0:
-                            no_cat.click(force=True)
-                        else:
-                            page.keyboard.press("Escape")
-                else:
-                    print("[WARNING] 카테고리 설정 버튼을 찾을 수 없어 건너뜁니다.")
-                        
-            page.wait_for_timeout(1000)
-            
-            # 8. 태그 입력 (완료 버튼 클릭 전에 수행)
-            if tags:
-                print("태그 입력 중...")
-                tag_input = page.locator("#tagText").first
-                if tag_input.count() == 0:
-                    tag_input = page.locator("input[name='tagText'], input.tf_g, .editor_tag input").first
-                if tag_input.count() > 0:
-                    for tag in tags:
-                        tag_input.click()
-                        page.wait_for_timeout(200)
-                        for char in tag:
-                            tag_input.type(char)
-                            random_sleep(50, 150)
-                        tag_input.press("Enter")
-                        random_sleep(500, 1000)
-                    print(f"태그 {len(tags)}개 입력 완료.")
-                else:
-                    print("[WARNING] 태그 입력 요소를 찾을 수 없어 건너뜁니다.")
-                    
-            # 9. 본문 HTML 가공 및 TinyMCE API를 통한 주입
-            print("본문 HTML 가공 및 TinyMCE API 주입 진행...")
-            processed_content = content_html
-            
-            for img in images:
-                orig_src = img["original_src"]
-                fname = os.path.basename(img["decoded_src"])
-                if fname in tistory_image_map:
-                    cdn_url = tistory_image_map[fname]
-                    processed_content = processed_content.replace(orig_src, cdn_url)
-                    print(f"  [치환] {orig_src} -> {cdn_url[:60]}...")
-                else:
-                    print(f"  [치환 실패] 매핑된 CDN URL 없음: {fname}")
-            
-            page.evaluate("""(content) => {
-                const editor = window.tinymce.activeEditor;
-                editor.setContent(content);
-                editor.setDirty(true);
-                editor.undoManager.add();
-                editor.fire('change');
-                editor.fire('input');
-                editor.nodeChanged();
-                
-                const ta = document.getElementById('editor-tistory');
-                if (ta) {
-                    ta.value = content;
-                    ta.dispatchEvent(new Event('input', { bubbles: true }));
-                    ta.dispatchEvent(new Event('change', { bubbles: true }));
-                }
-            }""", processed_content)
-            print("에디터 본문 주입 및 이벤트 전파 완료.")
-            random_sleep(action_min, action_max)
-            
-            # 10. 완료 버튼 클릭 및 설정 레이어 오픈
-            print("완료 버튼 클릭 및 설정 레이어 진입...")
-            publish_button_sel = config.get("selectors", {}).get("publish_button", "button:has-text('완료'), #publish-layer-btn")
-            publish_trigger = page.locator(publish_button_sel).first
-            if publish_trigger.count() > 0:
-                publish_trigger.click()
+                        page.keyboard.press("Escape")
             else:
-                raise Exception("완료/발행 트리거 버튼을 찾을 수 없습니다.")
+                print("[WARNING] 카테고리 설정 버튼을 찾을 수 없어 건너뜁니다.")
+                    
+        page.wait_for_timeout(1000)
+        
+        # 8. 태그 입력 (완료 버튼 클릭 전에 수행)
+        if tags:
+            print("태그 입력 중...")
+            tag_input = page.locator("#tagText").first
+            if tag_input.count() == 0:
+                tag_input = page.locator("input[name='tagText'], input.tf_g, .editor_tag input").first
+            if tag_input.count() > 0:
+                for tag in tags:
+                    tag_input.click()
+                    page.wait_for_timeout(200)
+                    for char in tag:
+                        tag_input.type(char)
+                        random_sleep(50, 150)
+                    tag_input.press("Enter")
+                    random_sleep(500, 1000)
+                print(f"태그 {len(tags)}개 입력 완료.")
+            else:
+                print("[WARNING] 태그 입력 요소를 찾을 수 없어 건너뜁니다.")
                 
-            page.wait_for_timeout(2000)
+        # 9. 본문 HTML 가공 및 TinyMCE API를 통한 주입
+        print("본문 HTML 가공 및 TinyMCE API 주입 진행...")
+        processed_content = content_html
+        
+        for img in images:
+            orig_src = img["original_src"]
+            fname = os.path.basename(img["decoded_src"])
+            if fname in tistory_image_map:
+                cdn_url = tistory_image_map[fname]
+                processed_content = processed_content.replace(orig_src, cdn_url)
+                print(f"  [치환] {orig_src} -> {cdn_url[:60]}...")
+            else:
+                print(f"  [치환 실패] 매핑된 CDN URL 없음: {fname}")
+        
+        page.evaluate("""(content) => {
+            const editor = window.tinymce.activeEditor;
+            editor.setContent(content);
+            editor.setDirty(true);
+            editor.undoManager.add();
+            editor.fire('change');
+            editor.fire('input');
+            editor.nodeChanged();
             
-            # 11. 공개 설정 선택
-            visibility = config.get("visibility", "private")
-            visibility_kor = {"private": "비공개", "protected": "공개(보호)", "public": "공개"}.get(visibility, "비공개")
+            const ta = document.getElementById('editor-tistory');
+            if (ta) {
+                ta.value = content;
+                ta.dispatchEvent(new Event('input', { bubbles: true }));
+                ta.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+        }""", processed_content)
+        print("에디터 본문 주입 및 이벤트 전파 완료.")
+        random_sleep(action_min, action_max)
+        
+        # 10. 완료 버튼 클릭 및 설정 레이어 오픈
+        print("완료 버튼 클릭 및 설정 레이어 진입...")
+        publish_button_sel = config.get("selectors", {}).get("publish_button", "button:has-text('완료'), #publish-layer-btn")
+        publish_trigger = page.locator(publish_button_sel).first
+        if publish_trigger.count() > 0:
+            publish_trigger.click()
+        else:
+            raise Exception("완료/발행 트리거 버튼을 찾을 수 없습니다.")
             
-            print(f"공개설정 선택: {visibility_kor}")
-            page.locator(f"button:has-text('{visibility_kor}')").first.click(force=True)
-            page.wait_for_timeout(1000)
+        page.wait_for_timeout(2000)
+        
+        # 11. 공개 설정 선택
+        visibility = config.get("visibility", "private")
+        visibility_kor = {"private": "비공개", "protected": "공개(보호)", "public": "공개"}.get(visibility, "비공개")
+        
+        print(f"공개설정 선택: {visibility_kor}")
+        page.locator(f"button:has-text('{visibility_kor}')").first.click(force=True)
+        page.wait_for_timeout(1000)
+        
+        # 12. 자동 저장 대기 및 DKAPTCHA 대응 루프
+        print("발행 완료 대기 및 봇 방지 문자 감시 시작...")
+        confirm_btn = page.locator("button#publish-btn").first
+        button_enabled = False
+        nav_success = False
+        
+        for attempt in range(60):  # 최대 2분 대기
+            current_url = page.url
+            if "/entry/" in current_url or "manage/posts" in current_url:
+                nav_success = True
+                print(f"  발행 성공 페이지로 이동 감지: {current_url}")
+                break
             
-            # 12. 자동 저장 대기 및 DKAPTCHA 대응 루프
-            print("발행 완료 대기 및 봇 방지 문자 감시 시작...")
-            confirm_btn = page.locator("button#publish-btn").first
-            button_enabled = False
-            nav_success = False
-            
-            for attempt in range(60):  # 최대 2분 대기
+            try:
+                dkaptcha_detected = page.evaluate("""() => {
+                    const text = document.body.innerText;
+                    return text.includes('DKAPTCHA') || text.includes('지도에서') || text.includes('정답을 입력해주세요');
+                }""")
+                
+                if dkaptcha_detected:
+                    print(f"\a  [대기 {attempt*2}초] [WARN] 카카오 보안 문자(DKAPTCHA) 감지! 브라우저에서 인증을 완료해 주세요.")
+                    page.wait_for_timeout(2000)
+                    continue
+                
+                is_disabled = confirm_btn.evaluate("el => el.disabled")
+                btn_text = confirm_btn.inner_text().strip()
+                
+                if not is_disabled and "저장중" not in btn_text:
+                    button_enabled = True
+                    print(f"  발행 버튼 활성화 상태 도달: '{btn_text}'")
+                    break
+                    
+            except Exception as loop_err:
+                print(f"  [루프 예외] {loop_err}")
+                page.wait_for_timeout(2000)
                 current_url = page.url
                 if "/entry/" in current_url or "manage/posts" in current_url:
                     nav_success = True
-                    print(f"  발행 성공 페이지로 이동 감지: {current_url}")
-                    break
+                    print(f"  예외 후 발행 성공 URL 확인: {current_url}")
+                break
                 
-                try:
-                    dkaptcha_detected = page.evaluate("""() => {
-                        const text = document.body.innerText;
-                        return text.includes('DKAPTCHA') || text.includes('지도에서') || text.includes('정답을 입력해주세요');
-                    }""")
-                    
-                    if dkaptcha_detected:
-                        print(f"\a  [대기 {attempt*2}초] [WARN] 카카오 보안 문자(DKAPTCHA) 감지! 브라우저에서 인증을 완료해 주세요.")
-                        page.wait_for_timeout(2000)
-                        continue
-                    
-                    is_disabled = confirm_btn.evaluate("el => el.disabled")
-                    btn_text = confirm_btn.inner_text().strip()
-                    
-                    if not is_disabled and "저장중" not in btn_text:
-                        button_enabled = True
-                        print(f"  발행 버튼 활성화 상태 도달: '{btn_text}'")
-                        break
-                        
-                except Exception as loop_err:
-                    print(f"  [루프 예외] {loop_err}")
-                    page.wait_for_timeout(2000)
-                    current_url = page.url
-                    if "/entry/" in current_url or "manage/posts" in current_url:
-                        nav_success = True
-                        print(f"  예외 후 발행 성공 URL 확인: {current_url}")
-                    break
-                    
-                page.wait_for_timeout(2000)
-                
-            # 13. 최종 발행 처리
-            if nav_success:
-                db_utils.record_publish_success(selected_folder, title)
-                print(f"[SUCCESS] {selected_folder} 폴더 글 발행 완료! 최종 URL: {page.url}")
-                success = True
-            elif button_enabled:
-                print("최종 발행 진행...")
-                try:
-                    confirm_btn.click(force=True)
-                    page.wait_for_timeout(8000)
-                except Exception:
-                    page.wait_for_timeout(3000)
-                
-                current_url = page.url
-                if "/entry/" in current_url or "manage/posts" in current_url or blog_name in current_url:
-                    db_utils.record_publish_success(selected_folder, title)
-                    print(f"[SUCCESS] {selected_folder} 폴더 글 발행 완료! 최종 URL: {current_url}")
-                    success = True
-                else:
-                    raise Exception(f"발행 클릭 후 비정상 페이지 유지: {current_url}")
-            else:
-                raise Exception("발행 버튼이 활성화 상태에 도달하지 못했습니다 (캡차 미해결 또는 타임아웃).")
-                
-        except Exception as e:
-            print(f"[ERROR] 자동 발행 중 오류 발생: {e}")
-            db_utils.record_publish_failure(selected_folder, f"발행 중 에러: {e}")
+            page.wait_for_timeout(2000)
             
-        finally:
-            context.close()
-            print("브라우저를 안전하게 종료했습니다.")
-    
+        # 13. 최종 발행 처리
+        if nav_success:
+            db_utils.record_publish_success(selected_folder, title)
+            print(f"[SUCCESS] {selected_folder} 폴더 글 발행 완료! 최종 URL: {page.url}")
+            success = True
+        elif button_enabled:
+            print("최종 발행 진행...")
+            try:
+                confirm_btn.click(force=True)
+                page.wait_for_timeout(8000)
+            except Exception:
+                page.wait_for_timeout(3000)
+            
+            current_url = page.url
+            if "/entry/" in current_url or "manage/posts" in current_url or blog_name in current_url:
+                db_utils.record_publish_success(selected_folder, title)
+                print(f"[SUCCESS] {selected_folder} 폴더 글 발행 완료! 최종 URL: {current_url}")
+                success = True
+            else:
+                raise Exception(f"발행 클릭 후 비정상 페이지 유지: {current_url}")
+        else:
+            raise Exception("발행 버튼이 활성화 상태에 도달하지 못했습니다 (캡차 미해결 또는 타임아웃).")
+            
+    except Exception as e:
+        print(f"[ERROR] 자동 발행 중 오류 발생: {e}")
+        db_utils.record_publish_failure(selected_folder, f"발행 중 에러: {e}")
+        
+    finally:
+        # 응답 감시 리스너 제거로 메모리 누수 방지
+        page.remove_listener("response", handle_response)
+        print(f"  [{selected_folder}] 포스팅 단계 완료. (브라우저 유지)")
+        
     return success
 
 
@@ -414,38 +403,55 @@ def main():
         print("[INFO] 새로 업로드할 백업 게시글이 없습니다.")
         return
     
-    # 3. 발행 루프
+    # 3. 브라우저 기동 및 발행 루프
+    user_data_dir = os.path.abspath(config.get("user_data_dir", "user_data"))
+    headless = config.get("headless", False)
     success_count = 0
-    for i, selected_folder in enumerate(target_folders):
-        current_today = db_utils.get_today_post_count()
-        if current_today >= daily_limit:
-            print(f"\n[INFO] 오늘 발행 한도({daily_limit}개) 도달. 종료합니다.")
-            break
-        
-        folder_path = os.path.join(workspace_dir, selected_folder)
-        html_file = find_html_file(folder_path, selected_folder)
-        
-        if not html_file:
-            print(f"[SKIP] 폴더 {selected_folder}: HTML 파일 없음, 건너뜁니다.")
-            db_utils.record_publish_failure(selected_folder, "HTML 파일 누락")
-            continue
-        
-        print(f"\n{'='*60}")
-        print(f"[{i+1}번째 글] 발행 시작 | 현재 시각: {datetime.now().strftime('%H:%M:%S')}")
-        
-        ok = publish_one(config, selected_folder, folder_path, html_file)
-        if ok:
-            success_count += 1
-        
-        # 마지막 글이 아니면 딜레이 (다음 글 발행 전 대기)
-        next_today = db_utils.get_today_post_count()
-        is_last = (i == len(target_folders) - 1) or (next_today >= daily_limit)
-        if not is_last:
-            delay_s = random.randint(min_delay_s, max_delay_s)
-            eta = datetime.fromtimestamp(time.time() + delay_s).strftime('%H:%M:%S')
-            print(f"\n다음 글 발행까지 {delay_s // 60}분 {delay_s % 60}초 대기합니다... (예정: {eta})")
-            time.sleep(delay_s)
     
+    with sync_playwright() as p:
+        print("[INFO] 브라우저를 기동합니다...")
+        context = p.chromium.launch_persistent_context(
+            user_data_dir=user_data_dir,
+            headless=headless,
+            viewport={"width": 1400, "height": 900},
+            args=["--disable-blink-features=AutomationControlled"]
+        )
+        page = context.new_page()
+        
+        try:
+            for i, selected_folder in enumerate(target_folders):
+                current_today = db_utils.get_today_post_count()
+                if current_today >= daily_limit:
+                    print(f"\n[INFO] 오늘 발행 한도({daily_limit}개) 도달. 종료합니다.")
+                    break
+                
+                folder_path = os.path.join(workspace_dir, selected_folder)
+                html_file = find_html_file(folder_path, selected_folder)
+                
+                if not html_file:
+                    print(f"[SKIP] 폴더 {selected_folder}: HTML 파일 없음, 건너뜁니다.")
+                    db_utils.record_publish_failure(selected_folder, "HTML 파일 누락")
+                    continue
+                
+                print(f"\n{'='*60}")
+                print(f"[{i+1}번째 글] 발행 시작 | 현재 시각: {datetime.now().strftime('%H:%M:%S')}")
+                
+                ok = publish_one(page, config, selected_folder, folder_path, html_file)
+                if ok:
+                    success_count += 1
+                
+                # 마지막 글이 아니면 딜레이 (다음 글 발행 전 대기)
+                next_today = db_utils.get_today_post_count()
+                is_last = (i == len(target_folders) - 1) or (next_today >= daily_limit)
+                if not is_last:
+                    delay_s = random.randint(min_delay_s, max_delay_s)
+                    eta = datetime.fromtimestamp(time.time() + delay_s).strftime('%H:%M:%S')
+                    print(f"\n다음 글 발행까지 {delay_s // 60}분 {delay_s % 60}초 대기합니다... (예정: {eta})")
+                    time.sleep(delay_s)
+        finally:
+            print("[INFO] 브라우저를 종료합니다...")
+            context.close()
+            
     print(f"\n{'='*60}")
     print(f"[완료] 오늘 총 발행: {db_utils.get_today_post_count()} / {daily_limit} 개")
     print(f"이번 실행 발행 성공: {success_count}개")
