@@ -3,9 +3,9 @@
   "user_data_dir": "./user_data",
   "backup_dir": "c:/Users/ethan/Downloads/tistory_backup",
   "headless": false,
-  "daily_limit": 10,
+  "daily_limit": 15,
   "min_delay_seconds": 30,
-  "max_delay_seconds": 90,
+  "max_delay_seconds": 60,
   "selectors": {
     "title_textarea": "#post-title-inp",
     "editor_mode_dropdown": "button:has-text('기본모드'), span:has-text('기본모드')",

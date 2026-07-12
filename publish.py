@@ -109,10 +109,23 @@ def publish_one(page, config, selected_folder, folder_path, html_file):
         
     title = parsed_data["title"]
     category = parsed_data["category"]
+    date_str = parsed_data.get("date", "")
     tags = parsed_data["tags"]
     content_html = parsed_data["content_html"]
     images = parsed_data["images"]
     
+    # 날짜에서 연월일만 추출하여 제목 맨 뒤에 추가 (예: "제목 [2009-12-23]")
+    if date_str:
+        match = re.search(r"(\d{4}[-\./\s]\d{1,2}[-\./\s]\d{1,2})", date_str)
+        if match:
+            date_suffix = f" [{match.group(1).strip()}]"
+        else:
+            first_part = date_str.split()[0] if date_str else ""
+            date_suffix = f" [{first_part}]" if first_part else ""
+        
+        if date_suffix:
+            title = f"{title}{date_suffix}"
+            
     print(f"  제목: {title}")
     print(f"  카테고리: {category}")
     print(f"  태그: {tags}")

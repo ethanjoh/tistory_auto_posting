@@ -33,7 +33,7 @@ def parse_tistory_html(html_file_path):
 
     # 3. 발행일 (Date)
     date_str = ""
-    date_tag = soup.find("p", class_="date")
+    date_tag = soup.find(class_="date")
     if date_tag:
         date_str = date_tag.get_text().strip()
 
