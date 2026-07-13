@@ -268,6 +268,20 @@ def publish_one(page, config, selected_folder, folder_path, html_file):
             else:
                 print(f"  [치환 실패] 매핑된 CDN URL 없음: {fname}")
         
+        # 첫 번째 이미지 대표 이미지(represent="true") 설정
+        try:
+            from bs4 import BeautifulSoup
+            soup = BeautifulSoup(processed_content, 'html.parser')
+            first_img = soup.find('img')
+            if first_img:
+                first_img['represent'] = 'true'
+                processed_content = str(soup)
+                print("  [대표 이미지 설정] 본문의 첫 번째 이미지에 represent='true' 속성을 부여했습니다.")
+            else:
+                print("  [대표 이미지 설정] 본문에서 이미지를 찾을 수 없어 건너뜁니다.")
+        except Exception as img_err:
+            print(f"  [대표 이미지 설정 에러] {img_err}")
+        
         page.evaluate("""(content) => {
             const editor = window.tinymce.activeEditor;
             editor.setContent(content);
