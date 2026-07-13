@@ -2,7 +2,7 @@
 
 import os
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # 데이터베이스 파일 경로
 DB_PATH = os.path.join(os.path.dirname(__file__), "database.db")
@@ -118,6 +118,50 @@ def record_publish_failure(folder_name, title):
     conn.commit()
     conn.close()
     print(f"[DB] 발행 실패 기록 완료: {folder_name} ({title})")
+
+def get_recent_24h_posts():
+    """
+    최근 24시간 이내에 성공적으로 발행된 모든 글의 published_at 값을 오름차순 정렬된 리스트로 반환합니다.
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    # 24시간 전 시각 계산
+    limit_time = (datetime.now() - timedelta(hours=24)).isoformat()
+    
+    cursor.execute("""
+        SELECT published_at 
+        FROM posts 
+        WHERE status = 'success' AND published_at >= ?
+        ORDER BY published_at ASC
+    """, (limit_time,))
+    
+    rows = cursor.fetchall()
+    posts_24h = [row["published_at"] for row in rows]
+    conn.close()
+    return posts_24h
+
+def get_next_available_time(posts_24h, limit=50):
+    """
+    24시간 내 발행 글 개수 제한이 풀려 다음 글 발행이 가능한 시점을 계산하여 반환합니다.
+    posts_24h: 오름차순 정렬된 published_at(str) 리스트
+    """
+    if len(posts_24h) < limit:
+        return datetime.now()
+    
+    # limit개 이상의 글 중 가장 오래된 글(또는 limit번째 글)의 발행일시 + 24시간
+    target_idx = len(posts_24h) - limit
+    target_time_str = posts_24h[target_idx]
+    
+    try:
+        target_time = datetime.fromisoformat(target_time_str)
+    except ValueError:
+        try:
+            target_time = datetime.strptime(target_time_str.split('.')[0], "%Y-%m-%dT%H:%M:%S")
+        except Exception:
+            target_time = datetime.now()
+            
+    return target_time + timedelta(hours=24)
 
 # 단독 실행 시 DB 초기화 진행
 if __name__ == "__main__":

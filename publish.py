@@ -404,6 +404,25 @@ def main():
         print(f"[INFO] 오늘 발행 제한 한도({daily_limit}개)에 이미 도달하였습니다. 프로그램을 종료합니다.")
         return
     
+    # 1.2. 최근 24시간 이내 발행 수 제한 확인
+    recent_24h_limit = config.get("recent_24h_limit", 50)
+    posts_24h = db_utils.get_recent_24h_posts()
+    recent_24h_count = len(posts_24h)
+    
+    print(f"최근 24시간 동안 발행 완료된 글: {recent_24h_count} / {recent_24h_limit} 개")
+    print("=" * 60)
+    
+    if recent_24h_count >= recent_24h_limit:
+        next_time = db_utils.get_next_available_time(posts_24h, recent_24h_limit)
+        time_diff = next_time - datetime.now()
+        hours, remainder = divmod(int(time_diff.total_seconds()), 3600)
+        minutes, _ = divmod(remainder, 60)
+        
+        print(f"[WARNING] 최근 24시간 동안 {recent_24h_count}개의 글이 발행되어 제한 한도({recent_24h_limit}개)에 도달하였습니다.")
+        print(f"[INFO] 다음 발행 가능 시간: {next_time.strftime('%Y-%m-%d %H:%M:%S')} (약 {hours}시간 {minutes}분 후)")
+        print("[INFO] 프로그램을 종료합니다.")
+        return
+    
     # 2. 미발행 대상 폴더 수집
     all_folders = get_numeric_folders(workspace_dir)
     target_folders = [f for f in all_folders if not db_utils.is_already_published(f)]
