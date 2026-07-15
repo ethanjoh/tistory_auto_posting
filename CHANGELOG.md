@@ -5,22 +5,27 @@
 ### 수정 목적
 
 - 로컬 변경사항 중 일일 발행 제한 설명 수정본을 올바르게 반영하고 원격 저장소와 싱크 처리.
+- 보안이 필요하고 로컬 환경 전용 설정이 포함된 `config.json` 파일을 Git 추적(Tracking) 목록에서 영구 제외하여 원격 저장소 노출을 방지.
 
 ### 주요 결정 사항
 
 1. **동기화용 깃 스테이징 및 커밋 정리**:
    - 미스테이징 상태의 `how_to_run.md` (일일 발행 수 제한 가이드 15개 -> 5개 수정 반영본)를 병합 과정에 포함하여 커밋.
    - 로컬 저장소의 머지 상태를 완결하고 `git push`를 통해 원격 리포지토리(`origin/main`)와 완전히 동기화.
+2. **`config.json` 추적 중단**:
+   - `git rm --cached config.json`을 적용하여 로컬의 물리적 파일 및 설정값은 보존하면서 Git 인덱스와 GitHub 원격 저장소에서 제거.
 
 ### 수정한 파일
 
 - [how_to_run.md](how_to_run.md)
 - [CHANGELOG.md](CHANGELOG.md)
+- [config.json](config.json) (추적 제거)
 
 ### 테스트 결과
 
 - `git status`를 통한 파일 병합 충돌(conflict) 해결 확인 완료.
 - 원격 브랜치(`origin/main`)로의 `git push` 완료 후 저장소가 최신 상태(up-to-date)로 유지됨을 확인.
+- `git ls-files config.json`을 통해 해당 파일이 더 이상 깃에 의해 관리되지 않으며 로컬에 정상 보존되어 있음을 검증 완료.
 
 ## [2026-07-13]
 
