@@ -22,7 +22,7 @@ database.db
 error.log
 
 # 민감한 설정 파일 (필요시 주석 해제)
-# config.json
+config.json
 
 # OS 파일
 .DS_Store
