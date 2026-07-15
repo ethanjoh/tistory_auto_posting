@@ -4,8 +4,6 @@
 ### STEP 1. 설정 변경 (config.json)
 
 * 아래의 설정을 자신의 환경에 맞게 수정한 뒤, config.json으로 저장합니다.
-* blog_name은 tistory.com의 앞부분 주소만
-* backup_dir은 백업받은 티스토리 데이터가 있는 폴더
 
 ```
 {
@@ -34,7 +32,7 @@
 
 | 설정 | 의미 | 현재값 |
 |------|------|--------|
-| `blog_name` | 포스팅할 블로그 주소 | |
+| `blog_name` | tistory.com의 앞부분 주소 | |
 | `backup_dir` | 백업한 티스토리 HTML 폴더 경로 | |
 | `daily_limit` | 하루 최대 등록 개수 | `5` (원하는 개수로 수정, 리밋 주의)|
 | `min_delay_seconds` | 글 간 최소 대기 시간 | `30` (30초) |
