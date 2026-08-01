@@ -268,15 +268,41 @@ def publish_one(page, config, selected_folder, folder_path, html_file):
             else:
                 print(f"  [치환 실패] 매핑된 CDN URL 없음: {fname}")
         
-        # 첫 번째 이미지 대표 이미지(represent="true") 설정
+        # 첫 번째 이미지 대표 이미지(represent="true", data-represent="true") 설정
         try:
             from bs4 import BeautifulSoup
             soup = BeautifulSoup(processed_content, 'html.parser')
+            
+            # 기존 represent / data-represent 속성 및 class 제거 (초기화)
+            for el in soup.find_all(['img', 'figure', 'div']):
+                if 'represent' in el.attrs:
+                    del el['represent']
+                if 'data-represent' in el.attrs:
+                    del el['data-represent']
+                classes = el.get('class', [])
+                if isinstance(classes, list) and 'represent' in classes:
+                    classes.remove('represent')
+                    el['class'] = classes
+
             first_img = soup.find('img')
             if first_img:
                 first_img['represent'] = 'true'
+                first_img['data-represent'] = 'true'
+                
+                # 상위 figure/div 태그가 존재하는 경우 부모 요소에도 represent 속성 및 class 부여
+                parent_container = first_img.find_parent(['figure', 'div'])
+                if parent_container:
+                    parent_container['represent'] = 'true'
+                    parent_container['data-represent'] = 'true'
+                    p_classes = parent_container.get('class', [])
+                    if isinstance(p_classes, str):
+                        p_classes = p_classes.split()
+                    if 'represent' not in p_classes:
+                        p_classes.append('represent')
+                    parent_container['class'] = p_classes
+                    
                 processed_content = str(soup)
-                print("  [대표 이미지 설정] 본문의 첫 번째 이미지에 represent='true' 속성을 부여했습니다.")
+                print("  [대표 이미지 설정] 본문의 첫 번째 이미지 및 컨테이너에 represent='true' 및 data-represent='true' 속성을 부여했습니다.")
             else:
                 print("  [대표 이미지 설정] 본문에서 이미지를 찾을 수 없어 건너뜁니다.")
         except Exception as img_err:
@@ -313,11 +339,32 @@ def publish_one(page, config, selected_folder, folder_path, html_file):
         page.wait_for_timeout(2000)
         
         # 11. 공개 설정 선택
-        visibility = config.get("visibility", "private")
-        visibility_kor = {"private": "비공개", "protected": "공개(보호)", "public": "공개"}.get(visibility, "비공개")
+        visibility = config.get("visibility", "public")
+        visibility_kor = {"private": "비공개", "protected": "공개(보호)", "public": "공개"}.get(visibility, "공개")
         
-        print(f"공개설정 선택: {visibility_kor}")
-        page.locator(f"button:has-text('{visibility_kor}')").first.click(force=True)
+        print(f"공개설정 선택 시도: {visibility_kor}")
+        vis_clicked = False
+        vis_selectors = [
+            f"label:has-text('{visibility_kor}')",
+            f"button:has-text('{visibility_kor}')",
+            f"span:has-text('{visibility_kor}')",
+            f"input[type='radio'][value='{visibility}']",
+            f"input[type='radio'][value='PUBLIC']" if visibility == "public" else None,
+            f"#visibility-{visibility}"
+        ]
+        vis_selectors = [s for s in vis_selectors if s]
+        for sel in vis_selectors:
+            loc = page.locator(sel)
+            if loc.count() > 0:
+                try:
+                    loc.first.click(force=True)
+                    vis_clicked = True
+                    print(f"  공개설정 버튼 클릭 성공: {sel}")
+                    break
+                except Exception as click_err:
+                    print(f"  셀렉터 클릭 실패 ({sel}): {click_err}")
+        if not vis_clicked:
+            print(f"[WARNING] 공개설정 '{visibility_kor}' 버튼을 찾지 못했거나 클릭하지 못했습니다.")
         page.wait_for_timeout(1000)
         
         # 12. 자동 저장 대기 및 DKAPTCHA 대응 루프

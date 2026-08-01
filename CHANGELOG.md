@@ -1,5 +1,31 @@
 # CHANGELOG
 
+## [2026-08-01]
+
+### 수정 목적
+
+- 글 자동 발행 시 비공개가 아닌 '공개'로 발행되도록 기본 설정 및 셀렉터 클릭 동작 수정.
+- 포스팅 본문 내 첫 번째 이미지가 대표 이미지(썸네일)로 정상 인식/지정되도록 `represent="true"`, `data-represent="true"` 및 부모 컨테이너 태그/클래스 지정 강화.
+
+### 주요 결정 사항
+
+1. **글 발행 공개 설정 변경**:
+   - `config.json`에 `"visibility": "public"` 항목을 명시하고, `publish.py`의 기본값을 `"public"`으로 변경.
+   - 공개 설정 레이어에서 라벨, 버튼, 라디오 등 다중 셀렉터를 순차 시도하여 '공개' 선택이 확실하게 처리되도록 클릭 로직 강화.
+2. **첫 번째 이미지 대표 이미지 지정 로직 강화**:
+   - `publish.py`에서 파싱된 본문 HTML 내 첫 번째 이미지 태그(`<img>`)에 `represent="true"`와 `data-represent="true"`를 모두 추가.
+   - 이미지가 `<figure>` 또는 `div` 등 컨테이너에 감싸진 경우 부모 태그에도 `represent="true"`, `data-represent="true"` 속성과 `represent` 클래스를 부여하여 티스토리 에디터 썸네일 인식 안정화.
+
+### 수정한 파일
+
+- [config.json](config.json)
+- [publish.py](publish.py)
+- [CHANGELOG.md](CHANGELOG.md)
+
+### 테스트 결과
+
+- `publish.py` 구문 검사(`py_compile`) 통과 확인 완료.
+
 ## [2026-07-15]
 
 ### 수정 목적
