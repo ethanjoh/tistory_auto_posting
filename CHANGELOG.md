@@ -1,5 +1,31 @@
 # CHANGELOG
 
+## [2026-08-01] (2)
+
+### 수정 목적
+
+- 대표 이미지(썸네일) 설정이 지속적으로 실패하는 원인 파악 및 수정.
+
+### 원인 분석
+
+- **TinyMCE sanitize 문제**: `editor.setContent(html)`이 호출될 때 TinyMCE 에디터가 내부적으로 HTML을 파싱·정규화하는 과정에서 `represent`, `data-represent` 같은 비표준(HTML 스펙 외) 속성을 허용 목록에 없다는 이유로 자동 제거함.
+- **결과**: BeautifulSoup으로 `represent="true"`를 아무리 정교하게 삽입해도, `setContent()` 시점에 속성이 사라지므로 대표 이미지가 인식되지 않았음.
+- **부가 문제**: `str(soup)` 출력 시 `<html><body>` 래퍼가 추가되는 부작용 및 `editor.getContent()` 직렬화도 동일하게 비표준 속성을 제거함.
+
+### 해결 방법
+
+- `setContent()` 이후 별도의 `page.evaluate()`를 사용하는 대신, 동일 JS 블록 내에서 `editor.getBody().querySelector('img')`로 첫 번째 이미지를 찾아 `setAttribute()`로 DOM에 직접 속성을 부여.
+- DOM 직접 조작(setAttribute)은 TinyMCE sanitizer를 우회하여 속성이 DOM 노드에 보존됨.
+- textarea(`#editor-tistory`)에는 `editor.getContent()` 대신 `body.innerHTML`을 주입하여, DOM에 설정된 `represent` 속성이 최종 전송 데이터(폼 제출값)에 그대로 포함되도록 처리.
+
+### 수정한 파일
+
+- [publish.py](publish.py) (L311-342: JS evaluate 블록 내 DOM 직접 조작 로직 추가, textarea 값 소스 변경)
+
+### 테스트 결과
+
+- `python -m py_compile publish.py` 구문 검사 통과 확인.
+
 ## [2026-08-01]
 
 ### 수정 목적

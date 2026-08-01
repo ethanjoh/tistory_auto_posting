@@ -302,7 +302,7 @@ def publish_one(page, config, selected_folder, folder_path, html_file):
                     parent_container['class'] = p_classes
                     
                 processed_content = str(soup)
-                print("  [대표 이미지 설정] 본문의 첫 번째 이미지 및 컨테이너에 represent='true' 및 data-represent='true' 속성을 부여했습니다.")
+                print("  [대표 이미지 설정] BeautifulSoup 처리 완료 (TinyMCE DOM 재설정은 JS 주입 단계에서 수행됩니다).")
             else:
                 print("  [대표 이미지 설정] 본문에서 이미지를 찾을 수 없어 건너뜁니다.")
         except Exception as img_err:
@@ -317,9 +317,27 @@ def publish_one(page, config, selected_folder, folder_path, html_file):
             editor.fire('input');
             editor.nodeChanged();
             
+            // TinyMCE setContent()는 비표준 속성(represent, data-represent)을
+            // sanitize 과정에서 제거하므로, setContent 이후 DOM을 직접 조작하여 속성 부여
+            const body = editor.getBody();
+            const firstImg = body.querySelector('img');
+            if (firstImg) {
+                firstImg.setAttribute('represent', 'true');
+                firstImg.setAttribute('data-represent', 'true');
+                const parent = firstImg.parentElement;
+                if (parent && parent !== body &&
+                    (parent.tagName === 'FIGURE' || parent.tagName === 'DIV')) {
+                    parent.setAttribute('represent', 'true');
+                    parent.setAttribute('data-represent', 'true');
+                    parent.classList.add('represent');
+                }
+            }
+            
+            // textarea에는 editor.getContent() 대신 body.innerHTML을 직접 사용하여
+            // DOM에 직접 부여한 represent 속성이 최종 전송 데이터에 보존되도록 처리
             const ta = document.getElementById('editor-tistory');
             if (ta) {
-                ta.value = content;
+                ta.value = body.innerHTML;
                 ta.dispatchEvent(new Event('input', { bubbles: true }));
                 ta.dispatchEvent(new Event('change', { bubbles: true }));
             }
