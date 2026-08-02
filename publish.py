@@ -268,46 +268,6 @@ def publish_one(page, config, selected_folder, folder_path, html_file):
             else:
                 print(f"  [치환 실패] 매핑된 CDN URL 없음: {fname}")
         
-        # 첫 번째 이미지 대표 이미지(represent="true", data-represent="true") 설정
-        try:
-            from bs4 import BeautifulSoup
-            soup = BeautifulSoup(processed_content, 'html.parser')
-            
-            # 기존 represent / data-represent 속성 및 class 제거 (초기화)
-            for el in soup.find_all(['img', 'figure', 'div']):
-                if 'represent' in el.attrs:
-                    del el['represent']
-                if 'data-represent' in el.attrs:
-                    del el['data-represent']
-                classes = el.get('class', [])
-                if isinstance(classes, list) and 'represent' in classes:
-                    classes.remove('represent')
-                    el['class'] = classes
-
-            first_img = soup.find('img')
-            if first_img:
-                first_img['represent'] = 'true'
-                first_img['data-represent'] = 'true'
-                
-                # 상위 figure/div 태그가 존재하는 경우 부모 요소에도 represent 속성 및 class 부여
-                parent_container = first_img.find_parent(['figure', 'div'])
-                if parent_container:
-                    parent_container['represent'] = 'true'
-                    parent_container['data-represent'] = 'true'
-                    p_classes = parent_container.get('class', [])
-                    if isinstance(p_classes, str):
-                        p_classes = p_classes.split()
-                    if 'represent' not in p_classes:
-                        p_classes.append('represent')
-                    parent_container['class'] = p_classes
-                    
-                processed_content = str(soup)
-                print("  [대표 이미지 설정] BeautifulSoup 처리 완료 (TinyMCE DOM 재설정은 JS 주입 단계에서 수행됩니다).")
-            else:
-                print("  [대표 이미지 설정] 본문에서 이미지를 찾을 수 없어 건너뜁니다.")
-        except Exception as img_err:
-            print(f"  [대표 이미지 설정 에러] {img_err}")
-        
         page.evaluate("""(content) => {
             const editor = window.tinymce.activeEditor;
             editor.setContent(content);
@@ -317,27 +277,9 @@ def publish_one(page, config, selected_folder, folder_path, html_file):
             editor.fire('input');
             editor.nodeChanged();
             
-            // TinyMCE setContent()는 비표준 속성(represent, data-represent)을
-            // sanitize 과정에서 제거하므로, setContent 이후 DOM을 직접 조작하여 속성 부여
-            const body = editor.getBody();
-            const firstImg = body.querySelector('img');
-            if (firstImg) {
-                firstImg.setAttribute('represent', 'true');
-                firstImg.setAttribute('data-represent', 'true');
-                const parent = firstImg.parentElement;
-                if (parent && parent !== body &&
-                    (parent.tagName === 'FIGURE' || parent.tagName === 'DIV')) {
-                    parent.setAttribute('represent', 'true');
-                    parent.setAttribute('data-represent', 'true');
-                    parent.classList.add('represent');
-                }
-            }
-            
-            // textarea에는 editor.getContent() 대신 body.innerHTML을 직접 사용하여
-            // DOM에 직접 부여한 represent 속성이 최종 전송 데이터에 보존되도록 처리
             const ta = document.getElementById('editor-tistory');
             if (ta) {
-                ta.value = body.innerHTML;
+                ta.value = editor.getContent();
                 ta.dispatchEvent(new Event('input', { bubbles: true }));
                 ta.dispatchEvent(new Event('change', { bubbles: true }));
             }
@@ -355,6 +297,57 @@ def publish_one(page, config, selected_folder, folder_path, html_file):
             raise Exception("완료/발행 트리거 버튼을 찾을 수 없습니다.")
             
         page.wait_for_timeout(2000)
+        
+        # 10.1. 발행 레이어 내 대표 이미지 등록 (첫 번째 로컬 이미지 사용)
+        if images:
+            first_img_path = images[0]["absolute_path"]
+            if os.path.exists(first_img_path):
+                print(f"발행 레이어 대표 이미지 등록 시도: {first_img_path}")
+                try:
+                    uploaded = False
+                    
+                    # 1) hidden input[type=file] 찾아서 직접 set_files 시도
+                    thumb_input_selectors = [
+                        "input[type='file'][accept*='image']",
+                        ".wrap_thumb input[type='file']",
+                        "#attach-represent",
+                        "#attach-thumbnail"
+                    ]
+                    for sel in thumb_input_selectors:
+                        file_input = page.locator(sel)
+                        if file_input.count() > 0:
+                            file_input.first.set_files(first_img_path)
+                            uploaded = True
+                            print(f"  [대표 이미지 업로드] file input({sel})으로 설정 완료.")
+                            break
+                            
+                    # 2) file input 탐색으로 안될 경우, 대표이미지 추가 버튼 클릭 + expect_file_chooser
+                    if not uploaded:
+                        click_selectors = [
+                            "button:has-text('대표이미지 추가')",
+                            "span:has-text('대표이미지 추가')",
+                            ".wrap_thumb",
+                            "div:has-text('대표이미지 추가')"
+                        ]
+                        for c_sel in click_selectors:
+                            target_btn = page.locator(c_sel)
+                            if target_btn.count() > 0:
+                                with page.expect_file_chooser(timeout=3000) as fc_info:
+                                    target_btn.first.click(force=True)
+                                file_chooser = fc_info.value
+                                file_chooser.set_files(first_img_path)
+                                uploaded = True
+                                print(f"  [대표 이미지 업로드] 버튼({c_sel}) 클릭 및 파일 첨부 완료.")
+                                break
+                                
+                    if uploaded:
+                        page.wait_for_timeout(2000)
+                    else:
+                        print("  [WARNING] 발행 레이어에서 대표 이미지 추가 업로드 요소를 찾지 못했습니다.")
+                except Exception as thumb_err:
+                    print(f"  [WARNING] 대표 이미지 업로드 처리 중 오류 발생: {thumb_err}")
+            else:
+                print(f"  [WARNING] 첫 번째 이미지 파일이 존재하지 않습니다: {first_img_path}")
         
         # 11. 공개 설정 선택
         visibility = config.get("visibility", "public")
