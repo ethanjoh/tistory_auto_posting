@@ -316,7 +316,7 @@ def publish_one(page, config, selected_folder, folder_path, html_file):
                     for sel in thumb_input_selectors:
                         file_input = page.locator(sel)
                         if file_input.count() > 0:
-                            file_input.first.set_files(first_img_path)
+                            file_input.first.set_input_files(first_img_path)
                             uploaded = True
                             print(f"  [대표 이미지 업로드] file input({sel})으로 설정 완료.")
                             break

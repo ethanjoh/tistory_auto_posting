@@ -1,5 +1,19 @@
 # CHANGELOG
 
+## [2026-08-03]
+
+### 수정 목적
+
+- 발행 레이어 대표 이미지 등록 시 Playwright `Locator` 객체에서 잘못된 메소드(`set_files`) 호출로 인한 `'Locator' object has no attribute 'set_files'` 오류 수정.
+
+### 수정한 파일
+
+- [publish.py](publish.py): `file_input.first.set_files()`를 Playwright `Locator` 표준 메소드인 `file_input.first.set_input_files()`로 변경.
+
+### 테스트 결과
+
+- `python -m py_compile publish.py` 구문 검증 완료.
+
 ## [2026-08-02]
 
 ### 수정 목적
